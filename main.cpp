@@ -99,6 +99,8 @@ public:
     std::string trt_cache_path = ".\\engine_cache";
     
     int crop_size = 640;
+    int game_width = 0;
+    int game_height = 0;
     
     int rifle_key1 = VK_LBUTTON;
     int rifle_key2 = 0;
@@ -109,12 +111,17 @@ public:
     int sniper_max_lock_dist = 200;
     int min_lock_distance_pixels = 20;
     
-    float confidence_threshold = 0.5f;
+    float confidence_threshold = 0.65f;
     float nms_threshold = 0.4f;
     
     double aim_speed = 1.0;
     double aim_smoothing = 1.0;
-    double target_y_ratio = 0.3;
+    double rifle_key1_aim_x_ratio = 0.5;
+    double rifle_key1_aim_y_ratio = 0.3;
+    double rifle_key2_aim_x_ratio = 0.5;
+    double rifle_key2_aim_y_ratio = 0.3;
+    double sniper_aim_x_ratio = 0.5;
+    double sniper_aim_y_ratio = 0.3;
     double sensitivity = 1.0;
     double pixels_for_360_turn = 16410;
     double horizontal_fov = 120.0;
@@ -215,7 +222,9 @@ public:
     void MoveSmooth(double target_x, double target_y, double dt, double aim_speed, double aim_smoothing) {
         double out_x, out_y;
         pid.compute(target_x, target_y, dt, out_x, out_y);
-        out_x = (out_x * aim_speed) / aim_smoothing;\n        out_y = (out_y * aim_speed) / aim_smoothing;\n        MoveRelative(static_cast<int>(out_x), static_cast<int>(out_y));
+        out_x = (out_x * aim_speed) / aim_smoothing;
+        out_y = (out_y * aim_speed) / aim_smoothing;
+        MoveRelative(static_cast<int>(out_x), static_cast<int>(out_y));
     }
 
 private:
@@ -633,6 +642,8 @@ public:
         if (capturer.getWidth() < cfg.crop_size || capturer.getHeight() < cfg.crop_size) {
             throw std::runtime_error("Screen resolution is smaller than configured crop_size.");
         }
+        if (cfg.game_width <= 0) cfg.game_width = capturer.getWidth();
+        if (cfg.game_height <= 0) cfg.game_height = capturer.getHeight();
         update_mouse_factor();
         
         cv::namedWindow(cfg.ui_window_name);
@@ -649,8 +660,10 @@ public:
     }
     
     void update_mouse_factor() {
-        mouse_correction_factor_x = (cfg.horizontal_fov / static_cast<double>(capturer.getWidth())) * (cfg.pixels_for_360_turn / 360.0);
-        mouse_correction_factor_y = (cfg.vertical_fov / static_cast<double>(capturer.getHeight())) * (cfg.pixels_for_360_turn / 360.0);
+        const int w = (cfg.game_width > 0) ? cfg.game_width : capturer.getWidth();
+        const int h = (cfg.game_height > 0) ? cfg.game_height : capturer.getHeight();
+        mouse_correction_factor_x = (cfg.horizontal_fov / static_cast<double>(w)) * (cfg.pixels_for_360_turn / 360.0);
+        mouse_correction_factor_y = (cfg.vertical_fov / static_cast<double>(h)) * (cfg.pixels_for_360_turn / 360.0);
     }
 
     void Run() {
@@ -685,6 +698,18 @@ public:
             
             bool is_aiming = sniper_active || rifle_active;
             int active_max_dist = sniper_active ? cfg.sniper_max_lock_dist : cfg.rifle_max_lock_dist;
+            double active_aim_x_ratio = cfg.rifle_key1_aim_x_ratio;
+            double active_aim_y_ratio = cfg.rifle_key1_aim_y_ratio;
+            if (sniper_active) {
+                active_aim_x_ratio = cfg.sniper_aim_x_ratio;
+                active_aim_y_ratio = cfg.sniper_aim_y_ratio;
+            } else if (cfg.rifle_dual_trigger && rifle1_active && rifle2_active) {
+                active_aim_x_ratio = (cfg.rifle_key1_aim_x_ratio + cfg.rifle_key2_aim_x_ratio) * 0.5;
+                active_aim_y_ratio = (cfg.rifle_key1_aim_y_ratio + cfg.rifle_key2_aim_y_ratio) * 0.5;
+            } else if (rifle2_active && !rifle1_active) {
+                active_aim_x_ratio = cfg.rifle_key2_aim_x_ratio;
+                active_aim_y_ratio = cfg.rifle_key2_aim_y_ratio;
+            }
 
             // Handle UI Window
             handleUI();
@@ -698,7 +723,7 @@ public:
             tracker.update(detections);
             
             TrackedObject* best_target = findBestTarget(active_max_dist, is_aiming);
-            handleMouseInput(best_target, timings.total_loop_ms / 1000.0, is_aiming, active_max_dist);
+            handleMouseInput(best_target, timings.total_loop_ms / 1000.0, is_aiming, active_max_dist, active_aim_x_ratio, active_aim_y_ratio);
             
             auto loop_end_time = std::chrono::high_resolution_clock::now();
             timings.total_loop_ms = std::chrono::duration<double, std::milli>(loop_end_time - loop_start_time).count();
@@ -717,11 +742,11 @@ public:
 
 private:
     void handleUI() {
-        cv::Mat frame = cv::Mat(750, 500, CV_8UC3, cv::Scalar(49, 52, 49));
+        cv::Mat frame = cv::Mat(980, 520, CV_8UC3, cv::Scalar(49, 52, 49));
         
         cvui::text(frame, 10, 10, "Control Panel", 0.6);
         
-        cvui::window(frame, 10, 40, 480, 120, "Key Bindings");
+        cvui::window(frame, 10, 40, 500, 150, "Key Bindings");
         cvui::text(frame, 20, 65, "Rifle Key 1:");
         if (cvui::button(frame, 120, 60, 100, 25, binding_target == 1 ? "Press..." : GetKeyName(cfg.rifle_key1))) binding_target = 1;
         
@@ -735,44 +760,68 @@ private:
         if (cvui::button(frame, 120, 120, 100, 25, binding_target == 3 ? "Press..." : GetKeyName(cfg.sniper_key))) binding_target = 3;
         if (cvui::button(frame, 225, 120, 25, 25, "X")) cfg.sniper_key = 0;
         
-        cvui::window(frame, 10, 170, 480, 280, "Aim Settings");
-        cvui::text(frame, 20, 195, "Rifle Max Dist:");
-        cvui::trackbar(frame, 150, 180, 300, &cfg.rifle_max_lock_dist, 10, 500);
+        cvui::window(frame, 10, 200, 500, 420, "Aim Settings");
+        cvui::text(frame, 20, 225, "Rifle Max Dist:");
+        cvui::trackbar(frame, 170, 210, 320, &cfg.rifle_max_lock_dist, 10, 500);
         
-        cvui::text(frame, 20, 235, "Sniper Max Dist:");
-        cvui::trackbar(frame, 150, 220, 300, &cfg.sniper_max_lock_dist, 10, 500);
+        cvui::text(frame, 20, 265, "Sniper Max Dist:");
+        cvui::trackbar(frame, 170, 250, 320, &cfg.sniper_max_lock_dist, 10, 500);
         
-        cvui::text(frame, 20, 275, "Aim Speed:");
-        cvui::trackbar(frame, 150, 260, 300, &cfg.aim_speed, 0.1, 5.0);
+        cvui::text(frame, 20, 305, "Aim Speed:");
+        cvui::trackbar(frame, 170, 290, 320, &cfg.aim_speed, 0.1, 5.0);
         
-        cvui::text(frame, 20, 315, "Aim Smoothing:");
-        cvui::trackbar(frame, 150, 300, 300, &cfg.aim_smoothing, 0.1, 5.0);
+        cvui::text(frame, 20, 345, "Aim Smoothing:");
+        cvui::trackbar(frame, 170, 330, 320, &cfg.aim_smoothing, 0.1, 5.0);
         
-        cvui::text(frame, 20, 355, "FOV (H):");
-        cvui::trackbar(frame, 150, 340, 300, &cfg.horizontal_fov, 30.0, 180.0);
+        cvui::text(frame, 20, 385, "Rifle Key1 Aim X:");
+        cvui::trackbar(frame, 170, 370, 320, &cfg.rifle_key1_aim_x_ratio, 0.0, 1.0);
         
-        cvui::text(frame, 20, 395, "FOV (V):");
-        cvui::trackbar(frame, 150, 380, 300, &cfg.vertical_fov, 30.0, 180.0);
+        cvui::text(frame, 20, 425, "Rifle Key1 Aim Y:");
+        cvui::trackbar(frame, 170, 410, 320, &cfg.rifle_key1_aim_y_ratio, 0.0, 1.0);
         
-        update_mouse_factor();
+        cvui::text(frame, 20, 465, "Rifle Key2 Aim X:");
+        cvui::trackbar(frame, 170, 450, 320, &cfg.rifle_key2_aim_x_ratio, 0.0, 1.0);
         
-        cvui::window(frame, 10, 460, 480, 220, "Model & Execution");
-        cvui::text(frame, 20, 485, "Confidence:");
-        cvui::trackbar(frame, 150, 470, 300, &cfg.confidence_threshold, 0.1f, 1.0f);
+        cvui::text(frame, 20, 505, "Rifle Key2 Aim Y:");
+        cvui::trackbar(frame, 170, 490, 320, &cfg.rifle_key2_aim_y_ratio, 0.0, 1.0);
         
-        cvui::text(frame, 20, 520, "Model Type:");
-        if (cvui::button(frame, 150, 515, 100, 25, cfg.model_type == 0 ? "YOLOv8/v11" : (cfg.model_type == 1 ? "YOLOv5" : "End2End"))) {
+        cvui::text(frame, 20, 545, "Sniper Aim X:");
+        cvui::trackbar(frame, 170, 530, 320, &cfg.sniper_aim_x_ratio, 0.0, 1.0);
+        
+        cvui::text(frame, 20, 585, "Sniper Aim Y:");
+        cvui::trackbar(frame, 170, 570, 320, &cfg.sniper_aim_y_ratio, 0.0, 1.0);
+        
+        cvui::window(frame, 10, 640, 500, 330, "Game / Model / Execution");
+        cvui::text(frame, 20, 665, "Game Width:");
+        cvui::trackbar(frame, 170, 650, 320, &cfg.game_width, 640, 7680);
+        
+        cvui::text(frame, 20, 705, "Game Height:");
+        cvui::trackbar(frame, 170, 690, 320, &cfg.game_height, 480, 4320);
+        
+        cvui::text(frame, 20, 745, "FOV (H):");
+        cvui::trackbar(frame, 170, 730, 320, &cfg.horizontal_fov, 30.0, 180.0);
+        
+        cvui::text(frame, 20, 785, "FOV (V):");
+        cvui::trackbar(frame, 170, 770, 320, &cfg.vertical_fov, 30.0, 180.0);
+        
+        cvui::text(frame, 20, 825, "Confidence:");
+        cvui::trackbar(frame, 170, 810, 320, &cfg.confidence_threshold, 0.1f, 1.0f);
+        
+        cvui::text(frame, 20, 865, "Model Type:");
+        if (cvui::button(frame, 170, 860, 100, 25, cfg.model_type == 0 ? "YOLOv8/v11" : (cfg.model_type == 1 ? "YOLOv5" : "End2End"))) {
             cfg.model_type = (cfg.model_type + 1) % 3;
         }
         
-        cvui::text(frame, 20, 560, "Device:");
+        cvui::text(frame, 290, 865, "Device:");
         const char* devices[] = {"CPU", "GPU (CUDA)", "TensorRT", "OpenVINO"};
-        if (cvui::button(frame, 150, 555, 120, 25, devices[cfg.inference_device])) {
+        if (cvui::button(frame, 350, 860, 140, 25, devices[cfg.inference_device])) {
             cfg.inference_device = (cfg.inference_device + 1) % 4;
         }
         
-        cvui::text(frame, 20, 600, "Model Path (Restart Req):");
-        if (cvui::button(frame, 20, 620, 100, 25, "Select Model")) {
+        update_mouse_factor();
+        
+        cvui::text(frame, 20, 905, "Model Path (Restart Req):");
+        if (cvui::button(frame, 20, 925, 100, 25, "Select Model")) {
             char filename[MAX_PATH];
             OPENFILENAMEA ofn;
             ZeroMemory(&filename, sizeof(filename));
@@ -788,9 +837,9 @@ private:
                 cfg.model_path = filename;
             }
         }
-        cvui::printf(frame, 130, 625, 0.4, 0x00ff00, "%s", cfg.model_path.c_str());
+        cvui::printf(frame, 130, 930, 0.4, 0x00ff00, "%s", cfg.model_path.c_str());
         
-        if (cvui::button(frame, 10, 690, 150, 30, "Toggle Visualization")) {
+        if (cvui::button(frame, 330, 10, 180, 25, "Toggle Visualization")) {
             is_visualizing = !is_visualizing;
             if (is_visualizing) cv::namedWindow(cfg.window_name, cv::WINDOW_AUTOSIZE);
             else cv::destroyWindow(cfg.window_name);
@@ -817,7 +866,7 @@ private:
         return target;
     }
 
-    void handleMouseInput(TrackedObject* target, double dt, bool is_aiming, int active_max_dist) {
+    void handleMouseInput(TrackedObject* target, double dt, bool is_aiming, int active_max_dist, double aim_x_ratio, double aim_y_ratio) {
         auto current_time = std::chrono::high_resolution_clock::now();
 
         if (!target) {
@@ -853,8 +902,8 @@ private:
 
         if (is_aiming) {
             cv::Point target_point(
-                target->box.x + target->box.width / 2,
-                target->box.y + static_cast<int>(target->box.height * cfg.target_y_ratio)
+                target->box.x + static_cast<int>(target->box.width * aim_x_ratio),
+                target->box.y + static_cast<int>(target->box.height * aim_y_ratio)
             );
             double dx_pixels = target_point.x - crop_center.x;
             double dy_pixels = target_point.y - crop_center.y;
@@ -923,7 +972,8 @@ private:
     std::vector<Detection> detections;
     TimingDetails timings;
     
-    bool is_visualizing;\n    int binding_target = 0;
+    bool is_visualizing;
+    int binding_target = 0;
     double current_fov_radius;
     bool is_target_lost = false;
     std::chrono::high_resolution_clock::time_point target_lost_time;
