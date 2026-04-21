@@ -1,0 +1,70 @@
+# Build directories
+build/
+out/
+cmake-build-*/
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+
+# Dependencies
+deps/
+!deps/.gitkeep
+
+# IDE
+.vs/
+.vscode/
+.idea/
+*.suo
+*.user
+*.sln
+*.vcxproj*
+*.code-workspace
+
+# Compiled files
+*.obj
+*.o
+*.exe
+*.dll
+*.lib
+*.pdb
+*.ilk
+*.exp
+*.iobj
+*.ipdb
+
+# ONNX models
+*.onnx
+
+# TensorRT cache
+engine_cache/
+*.engine
+*.plan
+*.trt
+
+# Config (user-specific)
+config/config.json
+
+# Logs
+*.log
+logs/
+
+# Temporary files
+*.tmp
+*.temp
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Test outputs
+Testing/
+CTestTestfile.cmake
+test_temp_*.json
+
+# Diff files
+diff_files.txt
+diff_output.txt

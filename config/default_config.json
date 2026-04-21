@@ -1,0 +1,46 @@
+{
+    "model": {
+        "path": "apex_final.onnx",
+        "type": 0,
+        "device": 2,
+        "trt_cache_path": "./engine_cache"
+    },
+    "capture": {
+        "crop_size": 640,
+        "monitor_index": 0
+    },
+    "keys": {
+        "rifle_key1": 1,
+        "rifle_key2": 0,
+        "rifle_dual_trigger": false,
+        "sniper_key": 2
+    },
+    "aim": {
+        "rifle_max_lock_dist": 100,
+        "sniper_max_lock_dist": 200,
+        "min_lock_distance_pixels": 20,
+        "speed": 1.0,
+        "smoothing": 1.0,
+        "rifle_key1_x_ratio": 0.5,
+        "rifle_key1_y_ratio": 0.3,
+        "rifle_key2_x_ratio": 0.5,
+        "rifle_key2_y_ratio": 0.3,
+        "sniper_x_ratio": 0.5,
+        "sniper_y_ratio": 0.3
+    },
+    "detection": {
+        "confidence_threshold": 0.65,
+        "nms_threshold": 0.4
+    },
+    "game": {
+        "width": 0,
+        "height": 0,
+        "horizontal_fov": 120.0,
+        "vertical_fov": 68.0,
+        "pixels_for_360_turn": 16410
+    },
+    "ui": {
+        "enable_visualization": true,
+        "window_name": "YOLO Real-time Detection"
+    }
+}
