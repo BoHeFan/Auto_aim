@@ -26,13 +26,13 @@ if(NOT OpenCV_FOUND)
     else()
         # Try opencv_world approach - find headers and libs manually
         set(OPENCV_INCLUDE_DIRS "${DEPS_DIR}/opencv/build/include")
-        set(OPENCV_LIB_DIR "${DEPS_DIR}/opencv/build/x64/vc17/lib")
+        set(OPENCV_LIB_DIR "${DEPS_DIR}/opencv/build/x64/vc16/lib")
         
         # Determine library name based on build type
         if(CMAKE_BUILD_TYPE STREQUAL "Debug")
-            set(OPENCV_LIB_NAME "opencv_world4100d")
+            set(OPENCV_LIB_NAME "opencv_world4130d")
         else()
-            set(OPENCV_LIB_NAME "opencv_world4100")
+            set(OPENCV_LIB_NAME "opencv_world4130")
         endif()
         
         # Search for available OpenCV world libs to auto-detect version
